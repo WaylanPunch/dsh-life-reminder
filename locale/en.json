@@ -3,21 +3,72 @@
     "title": "Life Reminder",
     "description": "Daily life reminders: water, meals, exercise, rest/sleep, and eye care. Configure intervals and quiet hours in settings."
   },
+
   "reminder.title": "Life Reminder",
+  "reminder.tip": "Take good care of yourself.",
+
   "reminder.water": "Time to drink water!",
   "reminder.meal": "Time to eat!",
   "reminder.exercise": "Time to exercise!",
   "reminder.rest": "Time to rest!",
   "reminder.sleep": "Time to sleep!",
   "reminder.eye": "Time for eye care!",
+
+  "reminder.labels": {
+    "water": "Water",
+    "meal": "Meal",
+    "exercise": "Exercise",
+    "rest": "Rest",
+    "sleep": "Sleep",
+    "eye": "Eye Care"
+  },
+
+  "reminder.bodies": {
+    "water": "Remember to drink a glass of water and stay hydrated.",
+    "meal": "It's time to eat. Don't work on an empty stomach.",
+    "exercise": "Stretch and move your body. Do some light exercise.",
+    "rest": "Give your eyes and brain a break. Step away from the screen for a few minutes.",
+    "sleep": "It's getting late. Time to get ready for bed and get a good rest.",
+    "eye": "Look away from the screen and gaze into the distance. Give your eyes a rest."
+  },
+
   "reminder.dismiss": "Dismiss",
   "reminder.snooze": "Snooze 10 min",
   "reminder.settings": "Open Settings",
   "reminder.enabled": "Reminder enabled",
   "reminder.disabled": "Reminder disabled",
+  "reminder.on": "On",
   "reminder.next": "Next reminder",
+  "reminder.nextShort": "Next",
+  "reminder.noNext": "Not scheduled",
+
   "reminder.settings.title": "Life Reminder Settings",
   "reminder.settings.desc": "Configure daily reminder intervals and quiet hours.",
+
+  "reminder.lang": "Language",
+  "reminder.intervalMode": "By interval",
+  "reminder.timesMode": "At times",
+  "reminder.every": "Every",
+  "reminder.minutesUnit": "min",
+  "reminder.atTimes": "At",
+  "reminder.addTime": "+ Add time",
+  "reminder.removeTime": "Remove",
+  "reminder.timesHint": "Multiple times supported, e.g. 09:00, 12:30, 18:00.",
+
+  "reminder.quietTitle": "Quiet hours",
+  "reminder.quietEnable": "Enable quiet hours",
+  "reminder.quietStart": "Start",
+  "reminder.quietEnd": "End",
+  "reminder.quietHint": "Outside sleep, reminders are postponed until quiet hours end.",
+
+  "reminder.save": "Save",
+  "reminder.saving": "Saving…",
+  "reminder.saved": "Saved ✓",
+  "reminder.saveFail": "Save failed: ",
+  "reminder.loadFail": "Could not load settings: ",
+  "reminder.loading": "Loading…",
+  "reminder.i18nFail": "Could not load the language pack; some labels may be missing.",
+
   "reminder.setting.water.enable": "Enable water reminder",
   "reminder.setting.water.interval": "Water reminder interval (minutes)",
   "reminder.setting.meal.enable": "Enable meal reminder",

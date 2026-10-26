@@ -3,21 +3,72 @@
     "title": "生活提醒",
     "description": "日常生活提醒：喝水、吃饭、锻炼、休息/睡眠、护眼，适时提醒照顾好自己。"
   },
+
   "reminder.title": "生活提醒",
+  "reminder.tip": "到了照顾好自己的时间。",
+
   "reminder.water": "该喝水啦！",
   "reminder.meal": "该吃饭啦！",
   "reminder.exercise": "该锻炼啦！",
   "reminder.rest": "该休息啦！",
   "reminder.sleep": "该睡觉啦！",
   "reminder.eye": "该护眼啦！",
+
+  "reminder.labels": {
+    "water": "喝水",
+    "meal": "吃饭",
+    "exercise": "锻炼",
+    "rest": "休息",
+    "sleep": "睡觉",
+    "eye": "护眼"
+  },
+
+  "reminder.bodies": {
+    "water": "记得喝一杯水，保持身体水分充足。",
+    "meal": "该吃饭了，不要饿着肚子工作。",
+    "exercise": "伸伸懒腰，活动活动身体，做点简单的运动。",
+    "rest": "眼睛和大脑也需要休息，远离屏幕几分钟。",
+    "sleep": "已经不早了，准备睡觉吧，早点休息对身体更好。",
+    "eye": "远离屏幕，望向远处，给眼睛放松。"
+  },
+
   "reminder.dismiss": "关闭",
   "reminder.snooze": "稍后 10 分钟",
   "reminder.settings": "打开设置",
   "reminder.enabled": "提醒已开启",
   "reminder.disabled": "提醒已关闭",
+  "reminder.on": "开启",
   "reminder.next": "下次提醒",
+  "reminder.nextShort": "下次",
+  "reminder.noNext": "未排期",
+
   "reminder.settings.title": "生活提醒设置",
   "reminder.settings.desc": "配置每日提醒间隔和安静时段。",
+
+  "reminder.lang": "语言",
+  "reminder.intervalMode": "按间隔",
+  "reminder.timesMode": "按时间点",
+  "reminder.every": "每",
+  "reminder.minutesUnit": "分钟",
+  "reminder.atTimes": "每天",
+  "reminder.addTime": "+ 添加时间",
+  "reminder.removeTime": "删除",
+  "reminder.timesHint": "可设置多个时间点，例如 09:00、12:30、18:00。",
+
+  "reminder.quietTitle": "安静时段",
+  "reminder.quietEnable": "启用安静时段",
+  "reminder.quietStart": "开始",
+  "reminder.quietEnd": "结束",
+  "reminder.quietHint": "安静时段内除睡眠提醒外，其余提醒顺延到时段结束。",
+
+  "reminder.save": "保存",
+  "reminder.saving": "保存中…",
+  "reminder.saved": "已保存 ✓",
+  "reminder.saveFail": "保存失败：",
+  "reminder.loadFail": "读取设置失败：",
+  "reminder.loading": "读取中…",
+  "reminder.i18nFail": "读取语言包失败，界面文案可能不完整。",
+
   "reminder.setting.water.enable": "启用喝水提醒",
   "reminder.setting.water.interval": "喝水提醒间隔（分钟）",
   "reminder.setting.meal.enable": "启用吃饭提醒",

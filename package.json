@@ -1,10 +1,16 @@
 {
   "name": "dsh-life-reminder",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "日常生活提醒插件：喝水、吃饭、锻炼、休息睡眠、护眼，适时提醒照顾好自己。",
   "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "reminder", "life", "health"],
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -16,7 +22,8 @@
     "client.js",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {

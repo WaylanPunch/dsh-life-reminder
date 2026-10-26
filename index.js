@@ -69,6 +69,13 @@ function parseHHMM(s) {
   return h * 60 + mi
 }
 
+/** 分钟数 → 补零的 HH:MM（统一格式，避免 '9:00' 与 '09:00' 被当成两个时间点） */
+function fmtHHMM(mins) {
+  const h = Math.floor(mins / 60)
+  const mi = mins % 60
+  return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0')
+}
+
 function nowMinutes() {
   const d = new Date()
   return d.getHours() * 60 + d.getMinutes()
@@ -87,18 +94,22 @@ function isInQuietHours(cfg) {
 /**
  * 把任意（用户/工具/文件）输入规整成合法配置：
  *   - interval 限制在 1..1440 分钟
- *   - times 只保留合法 HH:MM，去重排序
+ *   - times 只保留合法 HH:MM，补零归一、按分钟去重排序
  *   - times 模式下至少保留一个时间点
  *   - 睡眠默认 times 模式
+ *   - 安静时段 start === end 视为无效（会覆盖全天），强制关闭
  */
 function normalizeConfig(input) {
   const merged = mergeConfig(DEFAULTS, input || {})
+  const qs = parseHHMM(merged.quietHours?.start)
+  const qe = parseHHMM(merged.quietHours?.end)
   const out = {
     reminders: {},
     quietHours: {
-      enable: merged.quietHours?.enable === true,
-      start: parseHHMM(merged.quietHours?.start) !== null ? merged.quietHours.start : DEFAULTS.quietHours.start,
-      end: parseHHMM(merged.quietHours?.end) !== null ? merged.quietHours.end : DEFAULTS.quietHours.end,
+      // start === end 会让安静时段覆盖全天，除睡眠外所有提醒永远不触发 → 视为无效配置
+      enable: merged.quietHours?.enable === true && qs !== null && qe !== null && qs !== qe,
+      start: qs !== null ? fmtHHMM(qs) : DEFAULTS.quietHours.start,
+      end: qe !== null ? fmtHHMM(qe) : DEFAULTS.quietHours.end,
     },
   }
   for (const t of REMINDER_TYPES) {
@@ -107,9 +118,12 @@ function normalizeConfig(input) {
     const mode = raw.mode === 'times' ? 'times' : 'interval'
     const intervalRaw = Number(raw.interval)
     const interval = Number.isFinite(intervalRaw) ? Math.min(1440, Math.max(1, Math.round(intervalRaw))) : def.interval
-    let times = Array.isArray(raw.times)
-      ? Array.from(new Set(raw.times.map((s) => String(s).trim()).filter((s) => parseHHMM(s) !== null))).sort()
-      : []
+    const minsSet = new Set(
+      (Array.isArray(raw.times) ? raw.times : [])
+        .map((s) => parseHHMM(String(s).trim()))
+        .filter((v) => v !== null)
+    )
+    let times = [...minsSet].sort((a, b) => a - b).map(fmtHHMM)
     if (mode === 'times' && times.length === 0) {
       times = def.times && def.times.length ? def.times.slice() : ['09:00']
     }
@@ -205,37 +219,32 @@ function rebuildState(cfg, prevState) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 提醒文案
+// 文案：唯一来源是 locale/*.json（宿主直接读文件，客户端走 /api/i18n）
 // ─────────────────────────────────────────────────────────────────────────────
-const TITLES_ZH = {
-  water: '该喝水啦！', meal: '该吃饭啦！', exercise: '该锻炼啦！',
-  rest: '该休息啦！', sleep: '该睡觉啦！', eye: '该护眼啦！',
-}
-const TITLES_EN = {
-  water: 'Time to drink water!', meal: 'Time to eat!', exercise: 'Time to exercise!',
-  rest: 'Time to rest!', sleep: 'Time to sleep!', eye: 'Time for eye care!',
-}
-const BODIES_ZH = {
-  water: '记得喝一杯水，保持身体水分充足哦。',
-  meal: '该吃饭了，不要饿着肚子工作，好好休息一下再继续。',
-  exercise: '伸伸懒腰，活动活动身体，做点简单的运动吧。',
-  rest: '眼睛和大脑也需要休息，远离屏幕几分钟，放松一下。',
-  sleep: '已经不早了，准备睡觉吧，早点休息对身体更好。',
-  eye: '护眼时间到了！远离屏幕，望向远处，给眼睛放松。',
-}
-const BODIES_EN = {
-  water: 'Remember to drink a glass of water and stay hydrated.',
-  meal: "It's time to eat. Don't work on an empty stomach—take a proper break.",
-  exercise: 'Stretch and move your body. Do some light exercise.',
-  rest: 'Give your eyes and brain a break. Step away from the screen for a few minutes.',
-  sleep: "It's getting late. Time to get ready for bed and get a good rest.",
-  eye: 'Eye care time! Look away from the screen and gaze into the distance.',
+const SUPPORTED_LANGS = ['zh', 'en']
+const localeCache = new Map()
+
+/** 读取语言包（带缓存）；读不到返回 null，由调用方降级 */
+function loadLocale(lang) {
+  const key = SUPPORTED_LANGS.includes(lang) ? lang : 'zh'
+  if (localeCache.has(key)) return localeCache.get(key)
+  let data = null
+  try {
+    data = JSON.parse(fs.readFileSync(new URL(`./locale/${key}.json`, import.meta.url), 'utf8'))
+  } catch (e) {
+    console.error('[life-reminder] 读取语言包失败：' + key + ' ' + (e?.message ?? e))
+  }
+  localeCache.set(key, data)
+  return data
 }
 
+/** 取某类提醒的标题 + 正文（供后续推送气泡使用） */
 function reminderText(type, lang) {
-  const titles = lang === 'en' ? TITLES_EN : TITLES_ZH
-  const bodies = lang === 'en' ? BODIES_EN : BODIES_ZH
-  return { title: titles[type], body: bodies[type] }
+  const l = loadLocale(lang) || loadLocale('zh') || {}
+  return {
+    title: l['reminder.' + type] ?? l['reminder.title'] ?? '',
+    body: l['reminder.bodies']?.[type] ?? '',
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,7 +286,7 @@ function isLoopbackReq(req) {
 export const inject = ['timer', 'tools', 'systemPrompt', 'webServer', 'connection']
 
 export function apply(ctx, config) {
-  // 文件配置优先，其次 patch config，最后默认值
+  // 优先级：patch config > 磁盘配置文件 > DEFAULTS（后者仅作兜底）
   const fileCfg = readConfigFile()
   const cfg = normalizeConfig(mergeConfig(fileCfg, config || {}))
   let state = rebuildState(cfg, null)
@@ -313,7 +322,8 @@ export function apply(ctx, config) {
 
   /** 保存配置 → 重建状态 → 落盘 */
   function saveConfig(nextCfg) {
-    const normalized = normalizeConfig(nextCfg)
+    // 以当前配置为基底合并：任何来源的部分更新都不会把未提及的项打回默认值
+    const normalized = normalizeConfig(mergeConfig(cfg, nextCfg || {}))
     Object.assign(cfg, normalized)
     state = rebuildState(cfg, state)
     writeConfigFile(cfg)
@@ -618,6 +628,8 @@ export function apply(ctx, config) {
       json(res, 200, {
         ok: true,
         config: cfg,
+        // 默认值由宿主下发，客户端不再自带一份 DEFAULTS
+        defaults: JSON.parse(JSON.stringify(DEFAULTS)),
         configPath: CONFIG_FILE,
         state: REMINDER_TYPES.reduce((acc, t) => {
           const s = state[t.id]
@@ -631,10 +643,38 @@ export function apply(ctx, config) {
       return
     }
     if (req.method !== 'POST') { json(res, 405, { ok: false, error: 'method not allowed' }); return }
-    const body = JSON.parse((await readBody(req)) || '{}')
-    const incoming = (body && typeof body.config === 'object' && body.config) || body || {}
+    let body
+    try {
+      body = JSON.parse((await readBody(req)) || '{}')
+    } catch {
+      json(res, 400, { ok: false, error: 'invalid JSON body' })
+      return
+    }
+    const incoming =
+      body && typeof body === 'object' && !Array.isArray(body) &&
+      body.config && typeof body.config === 'object' && !Array.isArray(body.config)
+        ? body.config
+        : null
+    // 空 / 缺失 payload 必须拒绝：否则整份配置会被重置为默认并立即落盘
+    if (!incoming || Object.keys(incoming).length === 0) {
+      json(res, 400, { ok: false, error: 'missing non-empty "config" payload' })
+      return
+    }
     const saved = saveConfig(incoming)
     json(res, 200, { ok: true, config: saved, configPath: CONFIG_FILE })
+  })
+
+  // 语言包下发：客户端 UI 文案的唯一来源
+  route('/dsh-life-reminder/api/i18n', async (req, res) => {
+    if (req.method !== 'GET') { json(res, 405, { ok: false, error: 'method not allowed' }); return }
+    const locales = {}
+    const missing = []
+    for (const lang of SUPPORTED_LANGS) {
+      const l = loadLocale(lang)
+      if (l) locales[lang] = l
+      else missing.push(lang)
+    }
+    json(res, 200, { ok: missing.length === 0, locales, missing })
   })
 
   // ─────────────────────────────────────────────────────────────────────
@@ -667,13 +707,14 @@ export function apply(ctx, config) {
   }
 
   const timer = ctx.timer.interval(tick, TICK_MS)
-  setTimeout(tick, 3000)
+  const bootTick = setTimeout(tick, 3000)
 
   // ─────────────────────────────────────────────────────────────────────
   // 清理：插件卸载时停止定时器、注销工具与路由、移除系统提示
   // ─────────────────────────────────────────────────────────────────────
   ctx.effect(() => () => {
     stopped = true
+    clearTimeout(bootTick)
     if (typeof timer === 'function') timer()
     toolView()
     toolToggle()
@@ -687,4 +728,22 @@ export function apply(ctx, config) {
   try {
     console.log(`[life-reminder] 已启动 · 配置 ${CONFIG_FILE} · 路由 /dsh-life-reminder/api/config`)
   } catch {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 纯逻辑导出：供 tests/ 单测（宿主只消费 inject / apply）
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+  DEFAULTS,
+  REMINDER_TYPES,
+  mergeConfig,
+  parseHHMM,
+  fmtHHMM,
+  normalizeConfig,
+  isInQuietHours,
+  nextAtForTimes,
+  computeNextAt,
+  rebuildState,
+  loadLocale,
+  reminderText,
 }

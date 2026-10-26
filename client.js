@@ -7,8 +7,13 @@
  *   · 每类提醒二选一模式：按间隔分钟数，或每天一个/多个时间点（HH:MM）
  *   · 安静时段配置
  *   · 中英文手动切换
+ *
  * 配置通过同源 HTTP 路由 /dsh-life-reminder/api/config 与宿主半读写，
  * 持久化在 ~/.dsh/life-reminder.config.json。
+ *
+ * 文案单一来源：宿主 /dsh-life-reminder/api/i18n 下发的 locale/*.json
+ * （本文件不再内置整套文案，仅保留离线首屏用的极简 fallback）。
+ * 默认值同样由宿主 GET 响应的 defaults 字段下发，避免两端各存一份 DEFAULTS。
  *
  * 挂载位置：shell.overlay（frame-wide 浮动层，位于所有列之上，不随滚动容器滚动）。
  */
@@ -21,89 +26,11 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useRef } = React;
 
     const API = '/dsh-life-reminder/api/config';
+    const API_I18N = '/dsh-life-reminder/api/i18n';
     const LANG_KEY = 'dsh-life-reminder-lang';
     const POS_KEY = 'dsh-life-reminder-pos';
+    const I18N_KEY = 'dsh-life-reminder-i18n';
     const PET_SIZE = 56;
-
-    // ─────────────────────────────────────────────────────────────────
-    // 双语文本
-    // ─────────────────────────────────────────────────────────────────
-    const TEXTS = {
-      en: {
-        title: 'Life Reminder',
-        tip: 'Take good care of yourself.',
-        dismiss: 'Close',
-        langLabel: 'Language',
-        langEn: 'English',
-        langZh: '中文',
-        water: { title: 'Drink Water', body: 'Remember to drink a glass of water and stay hydrated.' },
-        meal:  { title: 'Have a Meal',  body: "It's time to eat. Don't work on an empty stomach." },
-        exercise: { title: 'Exercise', body: 'Stretch and move your body. Do some light exercise.' },
-        rest:  { title: 'Take a Rest',  body: 'Give your eyes and brain a break. Step away from the screen for a few minutes.' },
-        sleep: { title: 'Go to Sleep',  body: "It's getting late. Time to get ready for bed and get a good rest." },
-        eye:   { title: 'Eye Care',     body: 'Look away from the screen and gaze into the distance. Give your eyes a rest.' },
-        configTitle: 'Reminder Settings',
-        enabled: 'On',
-        intervalMode: 'By interval',
-        timesMode: 'At times',
-        every: 'Every',
-        minutesUnit: 'min',
-        atTimes: 'At',
-        addTime: '+ Add time',
-        removeTime: 'Remove',
-        quietTitle: 'Quiet hours',
-        quietEnable: 'Enable quiet hours',
-        quietStart: 'Start',
-        quietEnd: 'End',
-        quietHint: 'Outside sleep, reminders are postponed until quiet hours end.',
-        save: 'Save',
-        saving: 'Saving…',
-        saved: 'Saved ✓',
-        saveFail: 'Save failed: ',
-        loadFail: 'Could not load settings: ',
-        loading: 'Loading…',
-        nextAt: 'Next',
-        noNext: 'Not scheduled',
-        timesHint: 'Multiple times supported, e.g. 09:00, 12:30, 18:00.',
-      },
-      zh: {
-        title: '生活提醒',
-        tip: '到了照顾好自己的时间。',
-        dismiss: '关闭',
-        langLabel: '语言',
-        langEn: 'English',
-        langZh: '中文',
-        water: { title: '喝水', body: '记得喝一杯水，保持身体水分充足。' },
-        meal:  { title: '吃饭', body: '该吃饭了，不要饿着肚子工作。' },
-        exercise: { title: '锻炼', body: '伸伸懒腰，活动活动身体，做点简单的运动。' },
-        rest:  { title: '休息', body: '眼睛和大脑也需要休息，远离屏幕几分钟。' },
-        sleep: { title: '睡觉', body: '已经不早了，准备睡觉吧，早点休息对身体更好。' },
-        eye:   { title: '护眼', body: '远离屏幕，望向远处，给眼睛放松。' },
-        configTitle: '生活提醒设置',
-        enabled: '开启',
-        intervalMode: '按间隔',
-        timesMode: '按时间点',
-        every: '每',
-        minutesUnit: '分钟',
-        atTimes: '每天',
-        addTime: '+ 添加时间',
-        removeTime: '删除',
-        quietTitle: '安静时段',
-        quietEnable: '启用安静时段',
-        quietStart: '开始',
-        quietEnd: '结束',
-        quietHint: '安静时段内除睡眠提醒外，其余提醒顺延到时段结束。',
-        save: '保存',
-        saving: '保存中…',
-        saved: '已保存 ✓',
-        saveFail: '保存失败：',
-        loadFail: '读取设置失败：',
-        loading: '读取中…',
-        nextAt: '下次',
-        noNext: '未排期',
-        timesHint: '可设置多个时间点，例如 09:00、12:30、18:00。',
-      },
-    };
 
     const TYPE_META = [
       { id: 'water',   icon: '💧' },
@@ -113,6 +40,81 @@ window.__ModuleLoader__.load({
       { id: 'sleep',   icon: '😴' },
       { id: 'eye',     icon: '👁️' },
     ];
+
+    // ─────────────────────────────────────────────────────────────────
+    // 文案：由宿主下发，本地只留一份极简 fallback（首屏 / 离线 / 语言包拉取失败）
+    // ─────────────────────────────────────────────────────────────────
+    function buildTexts(l) {
+      const g = (k, fb = '') => (l && typeof l[k] === 'string' ? l[k] : fb);
+      const types = {};
+      for (const m of TYPE_META) {
+        types[m.id] = {
+          label: (l && l['reminder.labels'] && l['reminder.labels'][m.id]) || m.id,
+          title: g('reminder.' + m.id),
+          body: (l && l['reminder.bodies'] && l['reminder.bodies'][m.id]) || '',
+        };
+      }
+      return {
+        title: g('reminder.title', 'Life Reminder'),
+        tip: g('reminder.tip'),
+        dismiss: g('reminder.dismiss', 'Close'),
+        langLabel: g('reminder.lang', 'Language'),
+        configTitle: g('reminder.settings.title', 'Life Reminder'),
+        on: g('reminder.on', 'On'),
+        intervalMode: g('reminder.intervalMode'),
+        timesMode: g('reminder.timesMode'),
+        every: g('reminder.every'),
+        minutesUnit: g('reminder.minutesUnit'),
+        atTimes: g('reminder.atTimes'),
+        addTime: g('reminder.addTime'),
+        removeTime: g('reminder.removeTime'),
+        timesHint: g('reminder.timesHint'),
+        quietTitle: g('reminder.quietTitle'),
+        quietEnable: g('reminder.quietEnable'),
+        quietStart: g('reminder.quietStart'),
+        quietEnd: g('reminder.quietEnd'),
+        quietHint: g('reminder.quietHint'),
+        save: g('reminder.save', 'Save'),
+        saving: g('reminder.saving'),
+        saved: g('reminder.saved'),
+        saveFail: g('reminder.saveFail'),
+        loadFail: g('reminder.loadFail'),
+        loading: g('reminder.loading'),
+        i18nFail: g('reminder.i18nFail'),
+        nextAt: g('reminder.nextShort'),
+        noNext: g('reminder.noNext'),
+        types,
+      };
+    }
+
+    const FALLBACK = {
+      title: 'Life Reminder',
+      configTitle: 'Life Reminder',
+      tip: '',
+      dismiss: 'Close',
+      langLabel: 'Language',
+      on: 'On',
+      loading: 'Loading…',
+      loadFail: 'Could not load settings: ',
+      i18nFail: 'Could not load the language pack.',
+      save: 'Save',
+      types: TYPE_META.reduce((acc, m) => {
+        acc[m.id] = { label: m.id, title: '', body: '' };
+        return acc;
+      }, {}),
+    };
+
+    function readCachedTexts() {
+      try {
+        const cached = JSON.parse(localStorage.getItem(I18N_KEY) || 'null');
+        if (cached && cached.zh && cached.en) return cached;
+      } catch {}
+      return null;
+    }
+
+    function cacheTexts(texts) {
+      try { localStorage.setItem(I18N_KEY, JSON.stringify(texts)); } catch {}
+    }
 
     function getSavedLang() {
       try {
@@ -163,36 +165,58 @@ window.__ModuleLoader__.load({
     // ─────────────────────────────────────────────────────────────────
     // 工具：把宿主返回的配置规整成 UI 想要的结构
     // ─────────────────────────────────────────────────────────────────
-    function normalizeClientConfig(c) {
-      const base = { reminders: {}, quietHours: { enable: false, start: '22:00', end: '08:00' } };
+
+    /** 时间点补零为 HH:MM；无法解析时原样返回（保留用户正在输入的值） */
+    function fmtTime(s) {
+      const raw = String(s ?? '');
+      const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return raw;
+      const h = Math.min(23, Math.max(0, Number(m[1])));
+      const mi = Math.min(59, Math.max(0, Number(m[2])));
+      return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+    }
+
+    /** defaults 由宿主 GET 响应下发，客户端不自带默认值策略 */
+    function normalizeClientConfig(c, defaults) {
+      const d = defaults || {};
+      const base = { reminders: {}, quietHours: { enable: false, start: '', end: '' } };
       for (const m of TYPE_META) {
-        const raw = c?.reminders?.[m.id] || {};
+        const raw = (c && c.reminders && c.reminders[m.id]) || {};
+        const def = (d.reminders && d.reminders[m.id]) || {};
         base.reminders[m.id] = {
           enabled: raw.enabled !== false,
           mode: raw.mode === 'times' ? 'times' : 'interval',
-          interval: Number.isFinite(Number(raw.interval)) ? Math.min(1440, Math.max(1, Math.round(Number(raw.interval)))) : 60,
-          times: Array.isArray(raw.times) ? raw.times.map(String) : [],
+          interval: Number.isFinite(Number(raw.interval))
+            ? Math.min(1440, Math.max(1, Math.round(Number(raw.interval))))
+            : (Number(def.interval) || 1),
+          times: Array.isArray(raw.times) ? raw.times.map(fmtTime) : [],
         };
       }
-      if (c?.quietHours) {
-        base.quietHours = {
-          enable: c.quietHours.enable === true,
-          start: /^\d{1,2}:\d{2}$/.test(String(c.quietHours.start)) ? c.quietHours.start : '22:00',
-          end: /^\d{1,2}:\d{2}$/.test(String(c.quietHours.end)) ? c.quietHours.end : '08:00',
-        };
-      }
+      const qh = (c && c.quietHours) || {};
+      const dq = (d && d.quietHours) || {};
+      base.quietHours = {
+        enable: qh.enable === true,
+        start: qh.start || dq.start || '',
+        end: qh.end || dq.end || '',
+      };
       return base;
     }
 
     // ─────────────────────────────────────────────────────────────────
     // 设置面板
     // ─────────────────────────────────────────────────────────────────
-    function ConfigPanel({ onClose, lang, onLangChange, t }) {
+    function ConfigPanel({ onClose, lang, onLangChange, t, ready, i18nError }) {
       const [config, setConfig] = useState(null);
+      const [defaults, setDefaults] = useState(null);
       const [states, setStates] = useState({});
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [msg, setMsg] = useState('');
+
+      // 文案对象每次切语言都是新引用，不能直接进依赖数组，
+      // 否则切换语言会重新拉取配置、冲掉用户尚未保存的修改。用 ref 取当前文案。
+      const tRef = useRef(t);
+      tRef.current = t;
 
       useEffect(() => {
         let cancelled = false;
@@ -203,13 +227,14 @@ window.__ModuleLoader__.load({
           .then((j) => {
             if (cancelled) return;
             if (!j || !j.ok) throw new Error((j && j.error) || 'bad response');
-            setConfig(normalizeClientConfig(j.config));
+            setDefaults(j.defaults || null);
+            setConfig(normalizeClientConfig(j.config, j.defaults));
             setStates(j.state || {});
           })
-          .catch((e) => { if (!cancelled) setMsg(t.loadFail + e.message); })
+          .catch((e) => { if (!cancelled) setMsg(tRef.current.loadFail + e.message); })
           .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-      }, [t]);
+      }, []);
 
       const setReminder = (id, patch) => {
         setConfig((c) => c && ({
@@ -231,7 +256,7 @@ window.__ModuleLoader__.load({
           });
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
-          setConfig(normalizeClientConfig(j.config));
+          setConfig(normalizeClientConfig(j.config, j.defaults || defaults));
           setMsg(t.saved);
         } catch (e) {
           setMsg(t.saveFail + e.message);
@@ -275,10 +300,10 @@ window.__ModuleLoader__.load({
       });
 
       const rows = [];
-      if (config) {
+      if (config && ready) {
         for (const m of TYPE_META) {
           const r = config.reminders[m.id];
-          const label = t[m.id];
+          const meta = t.types[m.id] || { label: m.id };
           rows.push(
             h('div', {
               key: m.id,
@@ -298,7 +323,7 @@ window.__ModuleLoader__.load({
                     fontSize: '14px',
                     minWidth: '70px',
                   },
-                }, label.title),
+                }, meta.label),
                 h('label', {
                   style: { display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', cursor: 'pointer' },
                 }, [
@@ -308,7 +333,7 @@ window.__ModuleLoader__.load({
                     checked: r.enabled,
                     onChange: (e) => setReminder(m.id, { enabled: e.target.checked }),
                   }),
-                  t.enabled,
+                  t.on,
                 ]),
                 h('span', { style: { flex: 1 } }),
                 h('button', { type: 'button', style: btnStyle(r.mode === 'interval'), onClick: () => setReminder(m.id, { mode: 'interval' }) }, t.intervalMode),
@@ -462,7 +487,13 @@ window.__ModuleLoader__.load({
             key: 'tip',
             style: { margin: '0 0 6px 0', color: 'var(--dsw-alias-label-secondary)', fontSize: '13px' },
           }, t.tip),
-          loading
+          i18nError && !ready
+            ? h('p', {
+                key: 'i18nwarn',
+                style: { margin: '0 0 6px 0', color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px' },
+              }, t.i18nFail)
+            : null,
+          loading || !ready
             ? h('div', { key: 'loading', style: { padding: '24px 0', color: 'var(--dsw-alias-label-secondary)', fontSize: '13px' } }, t.loading)
             : rows,
           // 语言切换 + 操作
@@ -479,8 +510,8 @@ window.__ModuleLoader__.load({
             },
           }, [
             h('span', { style: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' } }, t.langLabel + ':'),
-            h('button', { type: 'button', onClick: () => onLangChange('en'), style: btnStyle(lang === 'en') }, t.langEn),
-            h('button', { type: 'button', onClick: () => onLangChange('zh'), style: btnStyle(lang === 'zh') }, t.langZh),
+            h('button', { type: 'button', onClick: () => onLangChange('en'), style: btnStyle(lang === 'en') }, 'English'),
+            h('button', { type: 'button', onClick: () => onLangChange('zh'), style: btnStyle(lang === 'zh') }, '中文'),
             h('span', { style: { flex: 1 } }),
             msg ? h('span', {
               style: { fontSize: '12px', color: msg === t.saved ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-state-error-primary)' },
@@ -488,7 +519,7 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               onClick: save,
-              disabled: loading || saving || !config,
+              disabled: loading || saving || !config || !ready,
               style: {
                 background: 'var(--dsw-alias-brand-primary)',
                 color: '#ffffff',
@@ -497,7 +528,7 @@ window.__ModuleLoader__.load({
                 padding: '8px 18px',
                 fontSize: '13px',
                 cursor: loading || saving ? 'default' : 'pointer',
-                opacity: loading || saving || !config ? 0.5 : 1,
+                opacity: loading || saving || !config || !ready ? 0.5 : 1,
               },
             }, saving ? t.saving : t.save),
           ]),
@@ -541,7 +572,26 @@ window.__ModuleLoader__.load({
       const [pos, setPos] = useState(loadPos);
       const [open, setOpen] = useState(false);
       const [lang, setLangState] = useState(getLang);
+      const [texts, setTexts] = useState(readCachedTexts);
+      const [i18nError, setI18nError] = useState(false);
       const dragRef = useRef(null);
+
+      // 语言包只拉一次：localStorage 缓存兜住首屏，失败时面板显示提示而不是丢文案
+      useEffect(() => {
+        let cancelled = false;
+        fetch(API_I18N, { headers: { accept: 'application/json' } })
+          .then((r) => r.json())
+          .then((j) => {
+            if (cancelled) return;
+            if (!j || !j.locales || !j.locales.zh || !j.locales.en) throw new Error('bad i18n response');
+            const built = { zh: buildTexts(j.locales.zh), en: buildTexts(j.locales.en) };
+            setTexts(built);
+            setI18nError(false);
+            cacheTexts(built);
+          })
+          .catch(() => { if (!cancelled) setI18nError(true); });
+        return () => { cancelled = true; };
+      }, []);
 
       useEffect(() => {
         const onResize = () => setPos((p) => clampPos(p));
@@ -549,7 +599,7 @@ window.__ModuleLoader__.load({
         return () => window.removeEventListener('resize', onResize);
       }, []);
 
-      const t = TEXTS[lang] || TEXTS.zh;
+      const t = (texts && texts[lang]) || FALLBACK;
 
       const onPointerDown = (e) => {
         if (e.button !== undefined && e.button !== 0) return;
@@ -614,6 +664,8 @@ window.__ModuleLoader__.load({
               lang,
               onLangChange: handleLangChange,
               t,
+              ready: !!texts,
+              i18nError,
             })
           : null,
       ]);
